@@ -14,6 +14,7 @@ export default function SearchBar({ onSelect, disabled }: Props) {
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -37,14 +38,22 @@ export default function SearchBar({ onSelect, disabled }: Props) {
     }
 
     debounceRef.current = setTimeout(async () => {
+      if (abortRef.current) abortRef.current.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+
       setLoading(true);
       try {
-        const res = await fetch(`/api/movies/search?q=${encodeURIComponent(value)}`);
+        const res = await fetch(`/api/movies/search?q=${encodeURIComponent(value)}`, {
+          signal: controller.signal,
+        });
         if (res.ok) {
           const data: Movie[] = await res.json();
           setResults(data);
           setIsOpen(data.length > 0);
         }
+      } catch (e: any) {
+        if (e.name === "AbortError") return;
       } finally {
         setLoading(false);
       }

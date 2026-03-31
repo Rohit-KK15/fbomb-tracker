@@ -14,12 +14,16 @@ export async function GET(request: NextRequest) {
 
   const url = `https://api.themoviedb.org/3/search/movie?api_key=${apiKey}&query=${encodeURIComponent(query)}&include_adult=false`;
 
-  const res = await fetch(url);
-  if (!res.ok) {
-    return Response.json({ error: "TMDB API error" }, { status: res.status });
+  let data;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) {
+      return Response.json({ error: "TMDB API error" }, { status: res.status });
+    }
+    data = await res.json();
+  } catch {
+    return Response.json({ error: "Failed to reach TMDB" }, { status: 502 });
   }
-
-  const data = await res.json();
 
   // Fetch details + external IDs in a single call per movie using append_to_response
   // Limit to 5 results to avoid rate limiting
