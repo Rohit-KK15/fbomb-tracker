@@ -1,0 +1,19 @@
+@import "tailwindcss";
+
+:root {
+  --bg-primary: #0a0a0f;
+  --bg-card: #0e0e16;
+  --bg-input: #111118;
+  --border: #1a1a24;
+  --text-primary: #ffffff;
+  --text-muted: #555555;
+  --text-dim: #333333;
+  --accent-pink: #ff2d78;
+  --accent-blue: #00e5ff;
+  --accent-green: #8cff32;
+}
+
+body {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
