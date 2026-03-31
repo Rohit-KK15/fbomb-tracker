@@ -21,32 +21,34 @@ export async function GET(request: NextRequest) {
 
   const data = await res.json();
 
-  const movies = await Promise.all(
-    data.results.slice(0, 10).map(async (m: any) => {
-      // Fetch external IDs to get IMDB ID
-      const extRes = await fetch(
-        `https://api.themoviedb.org/3/movie/${m.id}/external_ids?api_key=${apiKey}`
-      );
-      const extData = extRes.ok ? await extRes.json() : {};
-
-      // Fetch details for runtime
+  // Fetch details + external IDs in a single call per movie using append_to_response
+  // Limit to 5 results to avoid rate limiting
+  const movies = [];
+  for (const m of data.results.slice(0, 5)) {
+    try {
       const detailRes = await fetch(
-        `https://api.themoviedb.org/3/movie/${m.id}?api_key=${apiKey}`
+        `https://api.themoviedb.org/3/movie/${m.id}?api_key=${apiKey}&append_to_response=external_ids`
       );
-      const detailData = detailRes.ok ? await detailRes.json() : {};
+      if (!detailRes.ok) continue;
+      const detail = await detailRes.json();
 
-      return {
+      const imdbId = detail.external_ids?.imdb_id;
+      if (!imdbId) continue;
+
+      movies.push({
         id: m.id,
         title: m.title,
         year: m.release_date ? parseInt(m.release_date.substring(0, 4)) : null,
         posterUrl: m.poster_path
           ? `https://image.tmdb.org/t/p/w200${m.poster_path}`
           : null,
-        imdbId: extData.imdb_id || null,
-        runtime: detailData.runtime || null,
-      };
-    })
-  );
+        imdbId,
+        runtime: detail.runtime || null,
+      });
+    } catch {
+      continue;
+    }
+  }
 
-  return Response.json(movies.filter((m: any) => m.imdbId));
+  return Response.json(movies);
 }
