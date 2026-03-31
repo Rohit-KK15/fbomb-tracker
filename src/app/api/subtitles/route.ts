@@ -19,6 +19,7 @@ export async function GET(request: NextRequest) {
       headers: {
         "Api-Key": apiKey,
         "Content-Type": "application/json",
+        "User-Agent": "FBombTracker v1.0",
       },
     }
   );
@@ -46,18 +47,28 @@ export async function GET(request: NextRequest) {
       headers: {
         "Api-Key": apiKey,
         "Content-Type": "application/json",
+        "User-Agent": "FBombTracker v1.0",
       },
       body: JSON.stringify({ file_id: fileId }),
     }
   );
 
+  const downloadText = await downloadRes.text();
+
   if (!downloadRes.ok) {
+    console.error("OpenSubtitles download error:", downloadRes.status, downloadText.substring(0, 200));
     return Response.json({ error: "Failed to get download link" }, { status: downloadRes.status });
   }
 
-  const downloadData = await downloadRes.json();
-  const downloadUrl = downloadData.link;
+  let downloadData;
+  try {
+    downloadData = JSON.parse(downloadText);
+  } catch {
+    console.error("OpenSubtitles returned non-JSON:", downloadText.substring(0, 200));
+    return Response.json({ error: "Unexpected response from OpenSubtitles" }, { status: 502 });
+  }
 
+  const downloadUrl = downloadData.link;
   if (!downloadUrl) {
     return Response.json({ error: "No download URL returned" }, { status: 500 });
   }
