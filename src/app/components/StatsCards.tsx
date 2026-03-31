@@ -9,7 +9,7 @@ export default function StatsCards({ movies }: Props) {
   if (movies.length === 0) return null;
 
   return (
-    <div className="flex gap-3 px-5 pt-4 pb-8 overflow-x-auto">
+    <div className="flex flex-col sm:flex-row gap-3 px-5 pt-4 pb-8">
       {movies.map((m, i) => (
         <div
           key={m.movie.id}
