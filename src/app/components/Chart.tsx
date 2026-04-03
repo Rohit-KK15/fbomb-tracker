@@ -1,22 +1,27 @@
 "use client";
 
-import { useMemo } from "react";
-import type { MovieChartData } from "@/lib/types";
+import { useMemo, useState, useCallback, useRef } from "react";
+import type { MovieChartView } from "@/lib/types";
 import { MOVIE_COLORS } from "@/lib/types";
 import { interpolateBezierPath } from "@/lib/chart-math";
 
 interface Props {
-  movies: MovieChartData[];
+  movies: MovieChartView[];
   progress: number; // 0-1
+  onHover: (time: number | null) => void;
 }
 
 const CHART_W = 580;
 const CHART_H = 240;
 const PAD_L = 45;
-const PAD_T = 10;
+const PAD_T = 30;
+const PAD_R = 30;
 const PAD_B = 30;
 
-export default function Chart({ movies, progress }: Props) {
+export default function Chart({ movies, progress, onHover }: Props) {
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [hover, setHover] = useState<{ svgX: number; time: number } | null>(null);
+
   const maxTime = useMemo(
     () => Math.max(...movies.map((m) => m.movie.runtime || 120), 60),
     [movies]
@@ -47,11 +52,42 @@ export default function Chart({ movies, progress }: Props) {
     return labels;
   }, [maxTime]);
 
+  const handleMouseMove = useCallback(
+    (e: React.MouseEvent<SVGSVGElement>) => {
+      const svg = svgRef.current;
+      if (!svg) return;
+      const rect = svg.getBoundingClientRect();
+      const viewBoxW = PAD_L + CHART_W + PAD_R;
+      const scaleX = viewBoxW / rect.width;
+      const svgX = (e.clientX - rect.left) * scaleX;
+
+      if (svgX < PAD_L || svgX > PAD_L + CHART_W) {
+        setHover(null);
+        onHover(null);
+        return;
+      }
+
+      const time = ((svgX - PAD_L) / CHART_W) * maxTime;
+      setHover({ svgX, time });
+      onHover(time);
+    },
+    [maxTime, onHover]
+  );
+
+  const handleMouseLeave = useCallback(() => {
+    setHover(null);
+    onHover(null);
+  }, [onHover]);
+
   return (
     <div className="mx-4 bg-[var(--bg-card)] rounded-2xl border border-[var(--border)] p-5">
       <svg
-        viewBox={`0 0 ${PAD_L + CHART_W + 20} ${PAD_T + CHART_H + PAD_B + 20}`}
-        className="w-full h-auto"
+        ref={svgRef}
+        viewBox={`0 0 ${PAD_L + CHART_W + PAD_R} ${PAD_T + CHART_H + PAD_B}`}
+        className="w-full h-auto cursor-crosshair"
+        style={{ overflow: "visible" }}
+        onMouseMove={handleMouseMove}
+        onMouseLeave={handleMouseLeave}
       >
         <defs>
           {movies.map((_, i) => (
@@ -59,6 +95,15 @@ export default function Chart({ movies, progress }: Props) {
               <stop offset="0%" stopColor={MOVIE_COLORS[i]} stopOpacity={0.15} />
               <stop offset="100%" stopColor={MOVIE_COLORS[i]} stopOpacity={0} />
             </linearGradient>
+          ))}
+          {movies.map((_, i) => (
+            <filter key={`blur-${i}`} id={`line-glow-${i}`}>
+              <feGaussianBlur stdDeviation="3" result="blur" />
+              <feMerge>
+                <feMergeNode in="blur" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
           ))}
         </defs>
 
@@ -109,42 +154,87 @@ export default function Chart({ movies, progress }: Props) {
 
         {/* Lines */}
         {movies.map((m, i) => {
-          const visiblePoints = m.cumulative.filter(
-            (p) => p.timeMinutes <= maxTime * progress
+          const currentTime = maxTime * progress;
+          const allVisible = m.cumulative.filter(
+            (p) => p.timeMinutes <= currentTime
           );
-          if (visiblePoints.length === 0) return null;
+          if (allVisible.length === 0) return null;
 
-          const pathD = interpolateBezierPath(
-            visiblePoints,
-            CHART_W,
-            CHART_H,
-            maxTime,
-            maxCount
+          const lastVisible = allVisible[allVisible.length - 1];
+          if (lastVisible.timeMinutes < currentTime) {
+            allVisible.push({ timeMinutes: currentTime, count: lastVisible.count });
+          }
+
+          // Full path (used for skeleton when hovering)
+          const fullPathD = interpolateBezierPath(
+            allVisible, CHART_W, CHART_H, maxTime, maxCount
           );
 
-          const lastPoint = visiblePoints[visiblePoints.length - 1];
-          const headX =
-            PAD_L + (lastPoint.timeMinutes / maxTime) * CHART_W;
-          const headY =
-            PAD_T + CHART_H - (lastPoint.count / maxCount) * CHART_H;
+          // When hovering, split into active (up to cursor) and skeleton (rest)
+          const hoverTime = hover?.time ?? null;
+          const isHovering = hoverTime !== null && hoverTime <= currentTime;
+
+          const activePoints = isHovering
+            ? (() => {
+                const pts = allVisible.filter((p) => p.timeMinutes <= hoverTime);
+                if (pts.length > 0) {
+                  const last = pts[pts.length - 1];
+                  if (last.timeMinutes < hoverTime) {
+                    pts.push({ timeMinutes: hoverTime, count: last.count });
+                  }
+                }
+                return pts;
+              })()
+            : allVisible;
+
+          const activePathD = isHovering
+            ? interpolateBezierPath(activePoints, CHART_W, CHART_H, maxTime, maxCount)
+            : fullPathD;
+
+          const activeLastPoint = activePoints[activePoints.length - 1];
+          const fullLastPoint = allVisible[allVisible.length - 1];
+
+          // Poster bubble position — follows cursor when hovering
+          const bubblePoint = isHovering ? activeLastPoint : fullLastPoint;
+          const headX = PAD_L + (bubblePoint.timeMinutes / maxTime) * CHART_W;
+          const headY = PAD_T + CHART_H - (bubblePoint.count / maxCount) * CHART_H;
+
+          // Glow fill follows active line
+          const glowLastPoint = isHovering ? activeLastPoint : fullLastPoint;
 
           return (
             <g key={m.movie.id} transform={`translate(${PAD_L},${PAD_T})`}>
-              {/* Glow fill */}
+              {/* Glow fill — follows active portion */}
               <path
-                d={pathD + ` L${(lastPoint.timeMinutes / maxTime) * CHART_W},${CHART_H} L0,${CHART_H} Z`}
+                d={activePathD + ` L${(glowLastPoint.timeMinutes / maxTime) * CHART_W},${CHART_H} L0,${CHART_H} Z`}
                 fill={`url(#glow-${i})`}
               />
-              {/* Line */}
+
+              {/* Skeleton trail — full line, dimmed, shown when hovering */}
+              {isHovering && (
+                <path
+                  d={fullPathD}
+                  fill="none"
+                  stroke={MOVIE_COLORS[i]}
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  opacity={0.15}
+                />
+              )}
+
+              {/* Active colored line */}
               <path
-                d={pathD}
+                d={activePathD}
                 fill="none"
                 stroke={MOVIE_COLORS[i]}
                 strokeWidth="2.5"
                 strokeLinecap="round"
                 strokeLinejoin="round"
+                filter={`url(#line-glow-${i})`}
               />
-              {/* Poster bubble at head */}
+
+              {/* Poster bubble — follows cursor on hover */}
               <g transform={`translate(${headX - PAD_L},${headY - PAD_T})`}>
                 <circle r="18" fill="var(--bg-card)" stroke={MOVIE_COLORS[i]} strokeWidth="2.5" />
                 {m.movie.posterUrl ? (
@@ -177,6 +267,19 @@ export default function Chart({ movies, progress }: Props) {
             </g>
           );
         })}
+
+        {/* Hover — vertical guideline only */}
+        {hover && (
+          <line
+            x1={hover.svgX}
+            y1={PAD_T}
+            x2={hover.svgX}
+            y2={PAD_T + CHART_H}
+            stroke="rgba(255,255,255,0.15)"
+            strokeWidth="1"
+            style={{ pointerEvents: "none" }}
+          />
+        )}
       </svg>
     </div>
   );

@@ -4,6 +4,7 @@ interface Props {
   isPlaying: boolean;
   progress: number;
   maxTimeMinutes: number;
+  hoverProgress?: number | null;
   onPlay: () => void;
   onPause: () => void;
   onSeek: (progress: number) => void;
@@ -13,12 +14,16 @@ export default function PlayControls({
   isPlaying,
   progress,
   maxTimeMinutes,
+  hoverProgress,
   onPlay,
   onPause,
   onSeek,
 }: Props) {
-  const currentMinutes = Math.floor(progress * maxTimeMinutes);
-  const currentSeconds = Math.floor((progress * maxTimeMinutes * 60) % 60);
+  const isHovering = hoverProgress != null;
+  const displayProgress = isHovering ? hoverProgress : progress;
+
+  const currentMinutes = Math.floor(displayProgress * maxTimeMinutes);
+  const currentSeconds = Math.floor((displayProgress * maxTimeMinutes * 60) % 60);
   const timeStr = `${String(Math.floor(currentMinutes / 60)).padStart(2, "0")}:${String(currentMinutes % 60).padStart(2, "0")}:${String(currentSeconds).padStart(2, "0")}`;
 
   return (
@@ -46,20 +51,40 @@ export default function PlayControls({
           onSeek((e.clientX - rect.left) / rect.width);
         }}
       >
+        {/* Base progress bar */}
         <div
-          className="h-full rounded"
+          className="h-full rounded absolute left-0 top-0"
           style={{
             width: `${progress * 100}%`,
-            background: "linear-gradient(90deg, var(--accent-pink), #7b61ff)",
+            background: isHovering
+              ? "rgba(255,255,255,0.1)"
+              : "linear-gradient(90deg, var(--accent-pink), #7b61ff)",
           }}
         />
+        {/* Hover highlight bar */}
+        {isHovering && (
+          <div
+            className="h-full rounded absolute left-0 top-0"
+            style={{
+              width: `${hoverProgress * 100}%`,
+              background: "linear-gradient(90deg, var(--accent-pink), #7b61ff)",
+            }}
+          />
+        )}
         <div
-          className="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full"
-          style={{ left: `${progress * 100}%`, transform: "translate(-50%, -50%)" }}
+          className="absolute w-3 h-3 bg-white rounded-full transition-[left] duration-75"
+          style={{
+            left: `${displayProgress * 100}%`,
+            top: "50%",
+            transform: "translate(-50%, -50%)",
+          }}
         />
       </div>
 
-      <span className="text-xs text-[var(--text-muted)] tabular-nums shrink-0">
+      <span
+        className="text-xs tabular-nums shrink-0 transition-colors duration-100"
+        style={{ color: isHovering ? "var(--accent-pink)" : "var(--text-muted)" }}
+      >
         {timeStr}
       </span>
     </div>
