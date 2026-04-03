@@ -12,23 +12,26 @@ export async function GET(request: NextRequest) {
     return Response.json({ error: "OpenSubtitles API key not configured" }, { status: 500 });
   }
 
+  const osHeaders = {
+    "Api-Key": apiKey,
+    "Content-Type": "application/json",
+    "User-Agent": "FBombTracker v1.0",
+  };
+
   // Step 1: Search for subtitles by IMDB ID
-  const searchRes = await fetch(
-    `https://api.opensubtitles.com/api/v1/subtitles?imdb_id=${imdbId}&languages=en&order_by=download_count&order_direction=desc`,
-    {
-      headers: {
-        "Api-Key": apiKey,
-        "Content-Type": "application/json",
-        "User-Agent": "FBombTracker v1.0",
-      },
+  let searchData;
+  try {
+    const searchRes = await fetch(
+      `https://api.opensubtitles.com/api/v1/subtitles?imdb_id=${imdbId}&languages=en&order_by=download_count&order_direction=desc`,
+      { headers: osHeaders }
+    );
+    if (!searchRes.ok) {
+      return Response.json({ error: "OpenSubtitles search failed" }, { status: searchRes.status });
     }
-  );
-
-  if (!searchRes.ok) {
-    return Response.json({ error: "OpenSubtitles search failed" }, { status: searchRes.status });
+    searchData = await searchRes.json();
+  } catch {
+    return Response.json({ error: "Failed to reach OpenSubtitles" }, { status: 502 });
   }
-
-  const searchData = await searchRes.json();
 
   if (!searchData.data || searchData.data.length === 0) {
     return Response.json({ error: "No subtitles found for this movie" }, { status: 404 });
@@ -44,11 +47,7 @@ export async function GET(request: NextRequest) {
     "https://api.opensubtitles.com/api/v1/download",
     {
       method: "POST",
-      headers: {
-        "Api-Key": apiKey,
-        "Content-Type": "application/json",
-        "User-Agent": "FBombTracker v1.0",
-      },
+      headers: osHeaders,
       body: JSON.stringify({ file_id: fileId }),
     }
   );

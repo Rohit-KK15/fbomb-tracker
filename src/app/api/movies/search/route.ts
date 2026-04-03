@@ -25,21 +25,19 @@ export async function GET(request: NextRequest) {
     return Response.json({ error: "Failed to reach TMDB" }, { status: 502 });
   }
 
-  // Fetch details + external IDs in a single call per movie using append_to_response
-  // Limit to 5 results to avoid rate limiting
-  const movies = [];
-  for (const m of data.results.slice(0, 5)) {
+  // Fetch details + external IDs in parallel for top 5 results
+  const detailPromises = data.results.slice(0, 5).map(async (m: any) => {
     try {
       const detailRes = await fetch(
         `https://api.themoviedb.org/3/movie/${m.id}?api_key=${apiKey}&append_to_response=external_ids`
       );
-      if (!detailRes.ok) continue;
+      if (!detailRes.ok) return null;
       const detail = await detailRes.json();
 
       const imdbId = detail.external_ids?.imdb_id;
-      if (!imdbId) continue;
+      if (!imdbId) return null;
 
-      movies.push({
+      return {
         id: m.id,
         title: m.title,
         year: m.release_date ? parseInt(m.release_date.substring(0, 4)) : null,
@@ -48,11 +46,13 @@ export async function GET(request: NextRequest) {
           : null,
         imdbId,
         runtime: detail.runtime || null,
-      });
+      };
     } catch {
-      continue;
+      return null;
     }
-  }
+  });
+
+  const movies = (await Promise.all(detailPromises)).filter(Boolean);
 
   return Response.json(movies);
 }

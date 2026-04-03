@@ -31,7 +31,7 @@ export default function SearchBar({ onSelect, disabled }: Props) {
     setQuery(value);
     if (debounceRef.current) clearTimeout(debounceRef.current);
 
-    if (value.length < 2) {
+    if (value.length < 3) {
       setResults([]);
       setIsOpen(false);
       return;
